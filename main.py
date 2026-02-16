@@ -15,16 +15,22 @@ from models import Admin, ActivityLog
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create admin tables if they don't exist (skip if connection fails)
+    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    
+    # Test database connection and create tables if possible
     try:
+        # Test connection first
+        with engine.connect() as connection:
+            print(f"✓ Database connected successfully")
+        
+        # Try to create tables
         Base.metadata.create_all(bind=engine)
         print(f"✓ Database tables initialized")
     except Exception as e:
-        print(f"⚠ Warning: Could not initialize database tables: {e}")
-        print(f"  Tables may need to be created manually")
+        print(f"⚠ Warning: Database connection issue: {e}")
+        print(f"  Application will start but database operations will fail")
+        print(f"  Please check your DATABASE_URL environment variable")
     
-    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    print(f"Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
     yield
     print(f"Shutting down {settings.APP_NAME}")
 
@@ -35,10 +41,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - allow all origins for development
+# CORS - allow configured origins or all for development
+# For production, set ALLOWED_ORIGINS in Railway env vars
+origins = settings.origins_list if settings.ALLOWED_ORIGINS != "http://localhost:3000,http://localhost:3001" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
