@@ -41,13 +41,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - allow configured origins or all for development
+# CORS - allow configured origins
 # For production, set ALLOWED_ORIGINS in Railway env vars
-origins = settings.origins_list if settings.ALLOWED_ORIGINS != "http://localhost:3000,http://localhost:3001" else ["*"]
-
+# Default allows all origins for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Allow all origins - can be restricted via ALLOWED_ORIGINS env var
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
