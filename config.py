@@ -39,7 +39,10 @@ class Settings(BaseSettings):
     BUCKET_COUNSELING_REPORTS: str = "counseling-reports"
     
     class Config:
+        # Make .env file optional - Railway uses environment variables directly
         env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
         extra = "ignore"
         
     @property

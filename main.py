@@ -15,9 +15,16 @@ from models import Admin, ActivityLog
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create admin tables if they don't exist
-    Base.metadata.create_all(bind=engine)
+    # Create admin tables if they don't exist (skip if connection fails)
+    try:
+        Base.metadata.create_all(bind=engine)
+        print(f"✓ Database tables initialized")
+    except Exception as e:
+        print(f"⚠ Warning: Could not initialize database tables: {e}")
+        print(f"  Tables may need to be created manually")
+    
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    print(f"Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
     yield
     print(f"Shutting down {settings.APP_NAME}")
 
