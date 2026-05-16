@@ -29,6 +29,14 @@ async def lifespan(app: FastAPI):
         # Try to create tables
         Base.metadata.create_all(bind=engine)
         print(f"✓ Database tables initialized")
+        
+        # Run test reports migration
+        try:
+            from migrate_test_reports import migrate
+            migrate()
+        except Exception as e:
+            print(f"⚠ Warning: Test reports migration failed: {e}")
+            
     except Exception as e:
         print(f"⚠ Warning: Database connection issue: {e}")
         print(f"  Application will start but database operations will fail")
