@@ -3,14 +3,17 @@ Admin Portal Backend - Standalone FastAPI Application
 Connects to the main ArtPriv database
 """
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import traceback
 
 from config import settings
 from database import engine, Base
 from routes import router
 from models import Admin, ActivityLog
+
 
 
 @asynccontextmanager
@@ -49,6 +52,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"Global exception: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 # Include admin routes
 app.include_router(router, prefix="/api/admin", tags=["Admin"])

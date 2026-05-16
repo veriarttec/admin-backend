@@ -736,10 +736,11 @@ async def get_donor_full_details(
             docs_from_json = donor.legal_documents["documents"]
         
         for doc in docs_from_json:
-            doc_url = doc.get("url", "")
-            if doc_url and doc_url not in seen_urls:
-                combined_legal_documents.append(doc)
-                seen_urls.add(doc_url)
+            if isinstance(doc, dict):
+                doc_url = doc.get("url", "")
+                if doc_url and doc_url not in seen_urls:
+                    combined_legal_documents.append(doc)
+                    seen_urls.add(doc_url)
     
     return DonorDetailFullResponse(
         id=str(donor.id),

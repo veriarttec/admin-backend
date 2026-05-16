@@ -353,10 +353,9 @@ class DonorDetailFullResponse(BaseModel):
     # Related data
     state_history: List[StateHistoryItem] = []
     consent_documents: List[DonorConsentResponse] = []
-    test_reports: List[TestReportResponse] = []
-    consents: List[DonorConsentResponse] = []
     counseling_sessions: List[CounselingSessionResponse] = []
     test_reports: List[TestReportResponse] = []
+
 
 
 class DonorUpdateRequest(BaseModel):
