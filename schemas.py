@@ -151,7 +151,7 @@ class StateHistoryItem(BaseModel):
     changed_by: Optional[str] = None
     changed_by_role: Optional[str] = None
     reason: Optional[str] = None
-    created_at: Optional[datetime] = None
+    created_at: datetime
 
 
 class DonorDetailAdminView(DonorAdminView):
@@ -232,7 +232,7 @@ class DonorConsentResponse(BaseModel):
     verified_at: Optional[datetime] = None
     verified_by: Optional[str] = None
     verification_notes: Optional[str] = None
-    created_at: Optional[datetime] = None
+    created_at: datetime
 
 
 # ========== Counseling Schemas ==========
@@ -270,7 +270,7 @@ class TestReportResponse(BaseModel):
     file_url: str
     file_name: Optional[str] = None
     uploaded_by: Optional[str] = None
-    uploaded_at: Optional[datetime] = None
+    uploaded_at: datetime
     test_date: Optional[datetime] = None
     lab_name: Optional[str] = None
     notes: Optional[str] = None
@@ -278,7 +278,7 @@ class TestReportResponse(BaseModel):
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[str] = None
     review_notes: Optional[str] = None
-    created_at: Optional[datetime] = None
+    created_at: datetime
 
 
 # ========== Enhanced Bank Schemas ==========
@@ -347,15 +347,16 @@ class DonorDetailFullResponse(BaseModel):
     eligibility_status: str
     eligibility_notes: Optional[str] = None
     eligibility_decided_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    created_at: datetime
     updated_at: Optional[datetime] = None
     
     # Related data
     state_history: List[StateHistoryItem] = []
     consent_documents: List[DonorConsentResponse] = []
+    test_reports: List[TestReportResponse] = []
+    consents: List[DonorConsentResponse] = []
     counseling_sessions: List[CounselingSessionResponse] = []
     test_reports: List[TestReportResponse] = []
-
 
 
 class DonorUpdateRequest(BaseModel):

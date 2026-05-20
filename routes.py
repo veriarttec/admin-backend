@@ -568,6 +568,62 @@ async def list_donors(
     )
 
 
+@router.get("/donors/{donor_id}", response_model=DonorDetailAdminView)
+async def get_donor_details(
+    donor_id: str,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    """Get donor details with state history"""
+    donor = db.query(Donor).filter(Donor.id == donor_id).first()
+    if not donor:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    
+    bank_name = None
+    if donor.bank_id:
+        bank = db.query(Bank).filter(Bank.id == donor.bank_id).first()
+        bank_name = bank.name if bank else None
+    
+    history = db.query(DonorStateHistory).filter(
+        DonorStateHistory.donor_id == donor_id
+    ).order_by(DonorStateHistory.created_at.desc()).all()
+    
+    state_history = [
+        StateHistoryItem(
+            id=str(h.id),
+            from_state=h.from_state,
+            to_state=h.to_state,
+            changed_by=h.changed_by,
+            changed_by_role=h.changed_by_role,
+            reason=h.reason,
+            created_at=h.created_at
+        )
+        for h in history
+    ]
+    
+    return DonorDetailAdminView(
+        id=str(donor.id),
+        email=donor.email,
+        first_name=donor.first_name,
+        last_name=donor.last_name,
+        phone=donor.phone,
+        state=donor.state,
+        bank_id=str(donor.bank_id) if donor.bank_id else None,
+        bank_name=bank_name,
+        eligibility_status=donor.eligibility_status or "pending",
+        created_at=donor.created_at,
+        address=donor.address,
+        date_of_birth=donor.date_of_birth,
+        medical_interest_info=donor.medical_interest_info,
+        eligibility_notes=donor.eligibility_notes,
+        selected_at=donor.selected_at,
+        consent_pending=donor.consent_pending or False,
+        counseling_pending=donor.counseling_pending or False,
+        tests_pending=donor.tests_pending or False,
+        state_history=state_history
+    )
+
+
 @router.get("/donors/{donor_id}/full", response_model=DonorDetailFullResponse)
 async def get_donor_full_details(
     donor_id: str,
@@ -680,11 +736,10 @@ async def get_donor_full_details(
             docs_from_json = donor.legal_documents["documents"]
         
         for doc in docs_from_json:
-            if isinstance(doc, dict):
-                doc_url = doc.get("url", "")
-                if doc_url and doc_url not in seen_urls:
-                    combined_legal_documents.append(doc)
-                    seen_urls.add(doc_url)
+            doc_url = doc.get("url", "")
+            if doc_url and doc_url not in seen_urls:
+                combined_legal_documents.append(doc)
+                seen_urls.add(doc_url)
     
     return DonorDetailFullResponse(
         id=str(donor.id),
@@ -711,63 +766,6 @@ async def get_donor_full_details(
         state_history=state_history,
         consent_documents=consent_documents,
         test_reports=test_reports
-    )
-
-
-
-@router.get("/donors/{donor_id}", response_model=DonorDetailAdminView)
-async def get_donor_details(
-    donor_id: str,
-    db: Session = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
-):
-    """Get donor details with state history"""
-    donor = db.query(Donor).filter(Donor.id == donor_id).first()
-    if not donor:
-        raise HTTPException(status_code=404, detail="Donor not found")
-    
-    bank_name = None
-    if donor.bank_id:
-        bank = db.query(Bank).filter(Bank.id == donor.bank_id).first()
-        bank_name = bank.name if bank else None
-    
-    history = db.query(DonorStateHistory).filter(
-        DonorStateHistory.donor_id == donor_id
-    ).order_by(DonorStateHistory.created_at.desc()).all()
-    
-    state_history = [
-        StateHistoryItem(
-            id=str(h.id),
-            from_state=h.from_state,
-            to_state=h.to_state,
-            changed_by=h.changed_by,
-            changed_by_role=h.changed_by_role,
-            reason=h.reason,
-            created_at=h.created_at
-        )
-        for h in history
-    ]
-    
-    return DonorDetailAdminView(
-        id=str(donor.id),
-        email=donor.email,
-        first_name=donor.first_name,
-        last_name=donor.last_name,
-        phone=donor.phone,
-        state=donor.state,
-        bank_id=str(donor.bank_id) if donor.bank_id else None,
-        bank_name=bank_name,
-        eligibility_status=donor.eligibility_status or "pending",
-        created_at=donor.created_at,
-        address=donor.address,
-        date_of_birth=donor.date_of_birth,
-        medical_interest_info=donor.medical_interest_info,
-        eligibility_notes=donor.eligibility_notes,
-        selected_at=donor.selected_at,
-        consent_pending=donor.consent_pending or False,
-        counseling_pending=donor.counseling_pending or False,
-        tests_pending=donor.tests_pending or False,
-        state_history=state_history
     )
 
 
