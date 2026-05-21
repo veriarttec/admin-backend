@@ -3,11 +3,9 @@ Admin Portal Backend - Standalone FastAPI Application
 Connects to the main ArtPriv database
 """
 import os
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import traceback
 
 from config import settings
 from database import engine, Base
@@ -15,33 +13,11 @@ from routes import router
 from models import Admin, ActivityLog
 
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Create admin tables if they don't exist
+    Base.metadata.create_all(bind=engine)
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    
-    # Test database connection and create tables if possible
-    try:
-        # Test connection first
-        with engine.connect() as connection:
-            print(f"✓ Database connected successfully")
-        
-        # Try to create tables
-        Base.metadata.create_all(bind=engine)
-        print(f"✓ Database tables initialized")
-        
-        # Run test reports migration
-        try:
-            from migrate_test_reports import migrate
-            migrate()
-        except Exception as e:
-            print(f"⚠ Warning: Test reports migration failed: {e}")
-            
-    except Exception as e:
-        print(f"⚠ Warning: Database connection issue: {e}")
-        print(f"  Application will start but database operations will fail")
-        print(f"  Please check your DATABASE_URL environment variable")
-    
     yield
     print(f"Shutting down {settings.APP_NAME}")
 
@@ -52,28 +28,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - allow all origins and routes for now
+# CORS - allow all origins for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=False,  # Must be False when allow_origins=["*"]
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    print(f"Global exception: {exc}")
-    traceback.print_exc()
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal Server Error", "error": str(exc)},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
-        }
-    )
 
 # Include admin routes
 app.include_router(router, prefix="/api/admin", tags=["Admin"])
