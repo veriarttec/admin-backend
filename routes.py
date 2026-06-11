@@ -1,5 +1,7 @@
 """Admin API routes"""
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func, and_, or_
@@ -36,6 +38,7 @@ from storage_utils import (
 )
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ========== Auth Helpers ==========
@@ -107,7 +110,8 @@ def log_activity(db: Session, admin: Admin, action: str, entity_type: str,
 
 # ========== Authentication ==========
 @router.post("/login", response_model=AdminTokenResponse)
-async def admin_login(credentials: AdminLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def admin_login(request: Request, credentials: AdminLogin, db: Session = Depends(get_db)):
     """Authenticate admin and return JWT token"""
     admin = db.query(Admin).filter(Admin.email == credentials.email).first()
     
