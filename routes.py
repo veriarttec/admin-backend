@@ -2367,7 +2367,16 @@ async def create_donor(
         existing = db.query(Donor).filter(Donor.email == donor_data.email).first()
         if existing:
             raise HTTPException(status_code=400, detail="Email already exists")
-    
+
+    # Check if phone already exists (strip separators/prefix before comparing)
+    if donor_data.phone:
+        import re
+        bare_phone = re.sub(r"[\s\-()]", "", donor_data.phone)
+        bare_phone = bare_phone[3:] if bare_phone.startswith("+91") else bare_phone.lstrip("+")
+        existing_phone = db.query(Donor).filter(Donor.phone.like(f"%{bare_phone}")).first()
+        if existing_phone:
+            raise HTTPException(status_code=400, detail="Phone number already exists")
+
     # Verify bank if provided
     if bank_id:
         bank = db.query(Bank).filter(Bank.id == bank_id).first()
