@@ -2679,13 +2679,26 @@ async def get_donor_storage_documents(
 
 @router.get("/documents/signed-url")
 async def get_document_signed_url(
-    bucket: str = Query(..., description="Storage bucket name"),
-    path: str = Query(..., description="File path within bucket"),
+    bucket: Optional[str] = Query(None, description="Storage bucket name"),
+    path: Optional[str] = Query(None, description="File path within bucket"),
+    url: Optional[str] = Query(None, description="Stored storage URL to resolve instead of bucket/path"),
     current_admin: Admin = Depends(get_current_admin)
 ):
-    """Get a signed URL for a document in Supabase Storage"""
-    try:
-        signed_url = get_signed_url(bucket, path)
-        return {"url": signed_url, "bucket": bucket, "path": path}
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    """Get a signed URL for a document, from bucket/path or a stored URL"""
+    if url and not (bucket and path):
+        from urllib.parse import unquote, urlparse
+        cleaned = unquote(urlparse(url).path if url.startswith("http") else url)
+        for marker in ("/storage/v1/object/public/", "/storage/v1/object/sign/", "/storage/v1/object/"):
+            if marker in cleaned:
+                cleaned = cleaned.split(marker, 1)[1]
+                break
+        cleaned = cleaned.strip("/").split("?", 1)[0]
+        if "/" not in cleaned:
+            raise HTTPException(status_code=400, detail="Invalid document reference")
+        bucket, path = cleaned.split("/", 1)
+
+    if not bucket or not path:
+        raise HTTPException(status_code=400, detail="Provide bucket and path, or url")
+
+    signed_url = get_signed_url(bucket, path)
+    return {"url": signed_url, "bucket": bucket, "path": path}

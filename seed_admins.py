@@ -1,10 +1,18 @@
 """
 Seed script for admin portal
-Creates admin users and activity logs in the database
+Creates admin users and activity logs in the database.
+Requires ADMIN_SEED_PASSWORD to be set in the environment.
 """
+import os
+import sys
+
 from database import SessionLocal, engine, Base
 from models import Admin, ActivityLog, Bank
 from auth import hash_password
+
+SEED_PASSWORD = os.getenv("ADMIN_SEED_PASSWORD")
+if not SEED_PASSWORD or len(SEED_PASSWORD) < 8:
+    sys.exit("Set ADMIN_SEED_PASSWORD (min 8 chars) before running this script.")
 
 
 def seed_admins():
@@ -46,7 +54,7 @@ def seed_admins():
             
             admin = Admin(
                 email=admin_data["email"],
-                hashed_password=hash_password("admin123"),
+                hashed_password=hash_password(SEED_PASSWORD),
                 name=admin_data["name"],
                 role=admin_data["role"],
                 is_active=True
@@ -94,11 +102,11 @@ def seed_admins():
         print("\n" + "="*60)
         print("🎉 Admin seeding completed successfully!")
         print("="*60)
-        print("\n🔑 Admin credentials:")
+        print("\n🔑 Admin accounts:")
         print("   • admin@artpriv.com (super_admin)")
         print("   • support@artpriv.com (support)")
         print("   • viewer@artpriv.com (viewer)")
-        print("   • Password for all: admin123")
+        print("   • Password: value of ADMIN_SEED_PASSWORD")
         print("="*60)
         
     except Exception as e:

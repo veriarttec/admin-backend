@@ -19,13 +19,11 @@ python seed_admins.py
 uvicorn main:app --reload --port 8001
 ```
 
-## Default Admin Credentials
+## Admin Accounts
 
-| Email | Role | Password |
-|-------|------|----------|
-| admin@artpriv.com | super_admin | admin123 |
-| support@artpriv.com | support | admin123 |
-| viewer@artpriv.com | viewer | admin123 |
+Seed admin users with `python seed_admins.py`. The seed password is read from the
+`ADMIN_SEED_PASSWORD` environment variable — set it before running the script and
+rotate the password after first login. Never commit credentials to this repository.
 
 ## API Documentation
 

@@ -33,16 +33,12 @@ def get_signed_url(bucket: str, file_path: str, expires_in: int = 3600) -> str:
     supabase = get_supabase_client()
     try:
         response = supabase.storage.from_(bucket).create_signed_url(file_path, expires_in)
-        if response and 'signedURL' in response:
-            return response['signedURL']
-        # Fallback to public URL
-        return supabase.storage.from_(bucket).get_public_url(file_path)
-    except Exception as e:
-        # If signed URL fails, try public URL
-        try:
-            return supabase.storage.from_(bucket).get_public_url(file_path)
-        except:
-            raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=404, detail="Document not found or unavailable")
+    if response and ('signedURL' in response or 'signedUrl' in response):
+        return response.get('signedURL') or response.get('signedUrl')
+    # No public-URL fallback: never expose documents when signing fails
+    raise HTTPException(status_code=404, detail="Document not found or unavailable")
 
 
 def list_files_in_folder(bucket: str, folder_path: str) -> List[Dict]:
