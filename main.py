@@ -43,6 +43,9 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.origins_list,
+    # Railway-hosted frontends stay unblocked even before ALLOWED_ORIGINS is
+    # configured; scope is limited to Railway-owned hostnames.
+    allow_origin_regex=r"https://.*\.up\.railway\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
