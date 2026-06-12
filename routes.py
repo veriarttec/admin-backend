@@ -114,24 +114,6 @@ def log_activity(db: Session, admin: Admin, action: str, entity_type: str,
 async def admin_login(request: Request, credentials: AdminLogin, db: Session = Depends(get_db)):
     """Authenticate admin and return JWT token"""
     admin = db.query(Admin).filter(Admin.email == credentials.email).first()
-    
-    # Development only: Auto-create admin with default credentials
-    # This behavior mirrors the main backend
-    import os
-    is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
-    
-    if not admin and not is_production:
-        if credentials.email == "admin@artconnect.com" and credentials.password == "Admin@2025":
-            print("DEV MODE: Auto-creating default admin in admin portal.")
-            admin = Admin(
-                email="admin@artconnect.com",
-                hashed_password=hash_password("Admin@2025"),
-                name="System Admin",
-                role="super_admin"
-            )
-            db.add(admin)
-            db.commit()
-            db.refresh(admin)
 
     if not admin or not verify_password(credentials.password, admin.hashed_password):
         raise HTTPException(
