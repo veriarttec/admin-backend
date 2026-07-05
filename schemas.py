@@ -90,6 +90,8 @@ class BankAdminView(BaseModel):
     website: Optional[str] = None
     is_verified: bool
     verified_at: Optional[datetime] = None
+    is_active: Optional[bool] = True
+    deactivation_reason: Optional[str] = None
     is_subscribed: bool
     subscription_tier: Optional[str] = None
     subscription_started_at: Optional[datetime] = None
@@ -297,6 +299,9 @@ class BankDetailResponse(BaseModel):
     is_verified: bool
     verified_at: Optional[datetime] = None
     verified_by: Optional[str] = None
+    is_active: Optional[bool] = True
+    deactivated_at: Optional[datetime] = None
+    deactivation_reason: Optional[str] = None
     is_subscribed: bool
     subscription_tier: Optional[str] = None
     subscription_started_at: Optional[datetime] = None
@@ -324,16 +329,26 @@ class BankStateChangeRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class BankActiveToggleRequest(BaseModel):
+    is_active: bool
+    reason: Optional[str] = None
+
+
+class DocumentReuploadRequest(BaseModel):
+    reason: str
+
+
 # ========== Enhanced Donor Schemas ==========
 class DonorDetailFullResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: str
     email: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone: Optional[str] = None
     state: str
+    profile_picture_url: Optional[str] = None
     date_of_birth: Optional[datetime] = None
     address: Optional[str] = None
     medical_interest_info: Optional[Dict[str, Any]] = None

@@ -95,7 +95,12 @@ class Bank(Base):
     is_verified = Column(Boolean, default=False)
     verified_at = Column(DateTime(timezone=True))
     verified_by = Column(String)
-    
+
+    # Admin-controlled online/offline switch (dispute, unpaid subscription)
+    is_active = Column(Boolean, default=True, nullable=False)
+    deactivated_at = Column(DateTime(timezone=True))
+    deactivation_reason = Column(Text)
+
     is_subscribed = Column(Boolean, default=False)
     subscription_tier = Column(String)
     subscription_started_at = Column(DateTime(timezone=True))
@@ -133,7 +138,8 @@ class Donor(Base):
     blood_group = Column(String)
     
     medical_interest_info = Column(JSON)
-    
+    profile_picture_url = Column(String)
+
     bank_id = Column(String, ForeignKey("banks.id"))
     selected_at = Column(DateTime(timezone=True))
     

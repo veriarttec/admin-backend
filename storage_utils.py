@@ -41,6 +41,27 @@ def get_signed_url(bucket: str, file_path: str, expires_in: int = 3600) -> str:
     raise HTTPException(status_code=404, detail="Document not found or unavailable")
 
 
+def parse_storage_url(url: str) -> Optional[tuple]:
+    """Parse a Supabase storage URL into (bucket, path). Returns None if unparseable."""
+    for marker in ("/storage/v1/object/public/", "/storage/v1/object/sign/", "/storage/v1/object/"):
+        if marker in url:
+            remainder = url.split(marker, 1)[1].split("?", 1)[0]
+            parts = remainder.split("/", 1)
+            if len(parts) == 2:
+                return parts[0], parts[1]
+    return None
+
+
+def delete_file(bucket: str, file_path: str) -> bool:
+    """Delete a file from Supabase Storage. Returns False on failure (e.g. already gone)."""
+    supabase = get_supabase_client()
+    try:
+        supabase.storage.from_(bucket).remove([file_path])
+        return True
+    except Exception:
+        return False
+
+
 def list_files_in_folder(bucket: str, folder_path: str) -> List[Dict]:
     """
     List all files in a folder within a bucket

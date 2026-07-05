@@ -19,6 +19,7 @@ from schemas import (
     ActivityLogResponse, ActivityLogListResponse,
     SubscriptionAnalytics, MonthlySubscriptionTrend,
     BankDetailResponse, BankUpdateRequest, BankStateChangeRequest,
+    BankActiveToggleRequest, DocumentReuploadRequest,
     DonorDetailFullResponse, DonorUpdateRequest, DonorEligibilityUpdateRequest,
     ConsentTemplateResponse, DonorConsentResponse,
     CounselingSessionResponse, TestReportResponse,
@@ -331,6 +332,9 @@ async def list_banks(
             website=bank.website,
             is_verified=bank.is_verified,
             verified_at=bank.verified_at,
+            is_active=bank.is_active,
+            deactivated_at=bank.deactivated_at,
+            deactivation_reason=bank.deactivation_reason,
             is_subscribed=bank.is_subscribed,
             subscription_tier=bank.subscription_tier,
             subscription_started_at=bank.subscription_started_at,
@@ -371,6 +375,9 @@ async def get_bank_details(
         website=bank.website,
         is_verified=bank.is_verified,
         verified_at=bank.verified_at,
+        is_active=bank.is_active,
+        deactivated_at=bank.deactivated_at,
+        deactivation_reason=bank.deactivation_reason,
         is_subscribed=bank.is_subscribed,
         subscription_tier=bank.subscription_tier,
         subscription_started_at=bank.subscription_started_at,
@@ -424,6 +431,9 @@ async def verify_bank(
         website=bank.website,
         is_verified=bank.is_verified,
         verified_at=bank.verified_at,
+        is_active=bank.is_active,
+        deactivated_at=bank.deactivated_at,
+        deactivation_reason=bank.deactivation_reason,
         is_subscribed=bank.is_subscribed,
         subscription_tier=bank.subscription_tier,
         subscription_started_at=bank.subscription_started_at,
@@ -485,6 +495,9 @@ async def update_bank_subscription(
         website=bank.website,
         is_verified=bank.is_verified,
         verified_at=bank.verified_at,
+        is_active=bank.is_active,
+        deactivated_at=bank.deactivated_at,
+        deactivation_reason=bank.deactivation_reason,
         is_subscribed=bank.is_subscribed,
         subscription_tier=bank.subscription_tier,
         subscription_started_at=bank.subscription_started_at,
@@ -917,6 +930,9 @@ async def get_bank_full_details(
         certification_documents=bank.certification_documents,
         is_verified=bank.is_verified,
         verified_at=bank.verified_at,
+        is_active=bank.is_active,
+        deactivated_at=bank.deactivated_at,
+        deactivation_reason=bank.deactivation_reason,
         verified_by=bank.verified_by,
         is_subscribed=bank.is_subscribed,
         subscription_tier=bank.subscription_tier,
@@ -975,6 +991,9 @@ async def update_bank(
         certification_documents=bank.certification_documents,
         is_verified=bank.is_verified,
         verified_at=bank.verified_at,
+        is_active=bank.is_active,
+        deactivated_at=bank.deactivated_at,
+        deactivation_reason=bank.deactivation_reason,
         verified_by=bank.verified_by,
         is_subscribed=bank.is_subscribed,
         subscription_tier=bank.subscription_tier,
@@ -988,6 +1007,54 @@ async def update_bank(
         created_at=bank.created_at,
         updated_at=bank.updated_at
     )
+
+
+@router.put("/banks/{bank_id}/active")
+async def set_bank_active(
+    bank_id: str,
+    toggle_data: BankActiveToggleRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(require_role(["super_admin"]))
+):
+    """Take a bank offline (dispute, unpaid subscription) or bring it back online.
+
+    Offline banks get a read-only greyed-out UI in the main app and their donors
+    stop appearing in patient search until reactivated.
+    """
+    bank = db.query(Bank).filter(Bank.id == bank_id).first()
+    if not bank:
+        raise HTTPException(status_code=404, detail="Bank not found")
+
+    if bank.is_active == toggle_data.is_active:
+        return {
+            "message": f"Bank is already {'online' if bank.is_active else 'offline'}",
+            "is_active": bank.is_active,
+        }
+
+    bank.is_active = toggle_data.is_active
+    if toggle_data.is_active:
+        bank.deactivated_at = None
+        bank.deactivation_reason = None
+    else:
+        bank.deactivated_at = datetime.utcnow()
+        bank.deactivation_reason = toggle_data.reason or "Suspended by platform administrator"
+
+    db.commit()
+
+    log_activity(
+        db, current_admin,
+        "bank_reactivated" if toggle_data.is_active else "bank_deactivated",
+        "bank", bank.id,
+        {"bank_name": bank.name, "reason": toggle_data.reason},
+        request.client.host if request.client else None
+    )
+
+    return {
+        "message": f"Bank taken {'online' if toggle_data.is_active else 'offline'} successfully",
+        "is_active": bank.is_active,
+        "deactivation_reason": bank.deactivation_reason,
+    }
 
 
 @router.put("/banks/{bank_id}/state", response_model=BankDetailResponse)
@@ -1069,6 +1136,9 @@ async def change_bank_state(
         certification_documents=documents,
         is_verified=bank.is_verified,
         verified_at=bank.verified_at,
+        is_active=bank.is_active,
+        deactivated_at=bank.deactivated_at,
+        deactivation_reason=bank.deactivation_reason,
         verified_by=bank.verified_by,
         is_subscribed=bank.is_subscribed,
         subscription_tier=bank.subscription_tier,
@@ -1264,6 +1334,136 @@ async def get_donor_documents(
     elif isinstance(donor.legal_documents, list):
         return donor.legal_documents
     return []
+
+
+REQUIRED_DONOR_DOCUMENT_TYPES = ("government_id", "proof_of_address")
+
+
+@router.delete("/donors/{donor_id}/documents/{document_id}")
+async def delete_donor_document(
+    donor_id: str,
+    document_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(require_role(["super_admin", "support"]))
+):
+    """Permanently delete a donor document (DB row + storage object)."""
+    from storage_utils import parse_storage_url, delete_file
+
+    donor = db.query(Donor).filter(Donor.id == donor_id).first()
+    if not donor:
+        raise HTTPException(status_code=404, detail="Donor not found")
+
+    document = db.query(DonorDocument).filter(
+        DonorDocument.id == document_id,
+        DonorDocument.donor_id == donor_id
+    ).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    deleted_type = document.type
+    deleted_name = document.file_name
+
+    # Best-effort storage deletion (tolerate already-missing objects)
+    storage_deleted = False
+    if document.file_url:
+        parsed = parse_storage_url(document.file_url)
+        if parsed:
+            storage_deleted = delete_file(parsed[0], parsed[1])
+
+    # Remove matching entry from the donor's legal_documents JSON mirror
+    docs = donor.legal_documents
+    if isinstance(docs, dict) and "documents" in docs:
+        docs["documents"] = [d for d in docs["documents"] if d.get("url") != document.file_url]
+        flag_modified(donor, "legal_documents")
+    elif isinstance(docs, list):
+        donor.legal_documents = [d for d in docs if d.get("url") != document.file_url]
+        flag_modified(donor, "legal_documents")
+
+    db.delete(document)
+    db.flush()
+
+    # If a required document is now missing while the donor is in the legal-doc
+    # phase, push them back to rejected so they re-upload.
+    if deleted_type in REQUIRED_DONOR_DOCUMENT_TYPES and donor.state in (
+        "legal document verification pending",
+        "legal document verification verified",
+    ):
+        still_has_type = db.query(DonorDocument).filter(
+            DonorDocument.donor_id == donor_id,
+            DonorDocument.type == deleted_type,
+            DonorDocument.status.in_(["pending", "verified"])
+        ).count() > 0
+        if not still_has_type:
+            old_state = donor.state
+            donor.state = "legal document verification rejected"
+            db.add(DonorStateHistory(
+                donor_id=donor_id,
+                from_state=old_state,
+                to_state=donor.state,
+                changed_by=str(current_admin.id),
+                changed_by_role="admin",
+                reason=f"Admin deleted required document ({deleted_type})"
+            ))
+
+    db.commit()
+
+    log_activity(
+        db, current_admin, "donor_document_deleted", "donor", donor_id,
+        {"document_id": document_id, "type": deleted_type, "file_name": deleted_name,
+         "storage_deleted": storage_deleted},
+        request.client.host if request.client else None
+    )
+
+    return {"message": "Document deleted", "storage_deleted": storage_deleted}
+
+
+@router.post("/donors/{donor_id}/documents/{document_id}/request-reupload")
+async def request_document_reupload(
+    donor_id: str,
+    document_id: str,
+    reupload_data: DocumentReuploadRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(require_role(["super_admin", "support"]))
+):
+    """Mark a donor document as rejected so the donor must upload a replacement."""
+    donor = db.query(Donor).filter(Donor.id == donor_id).first()
+    if not donor:
+        raise HTTPException(status_code=404, detail="Donor not found")
+
+    document = db.query(DonorDocument).filter(
+        DonorDocument.id == document_id,
+        DonorDocument.donor_id == donor_id
+    ).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    document.status = "rejected"
+    document.rejection_reason = f"Re-upload requested by admin: {reupload_data.reason}"
+    document.verified_at = None
+    document.verified_by = None
+
+    # Keep the legal_documents JSON mirror in sync
+    docs = donor.legal_documents
+    doc_list = docs.get("documents") if isinstance(docs, dict) else docs
+    if isinstance(doc_list, list):
+        for entry in doc_list:
+            if entry.get("url") == document.file_url:
+                entry["status"] = "rejected"
+                entry["rejection_reason"] = document.rejection_reason
+                break
+        flag_modified(donor, "legal_documents")
+
+    db.commit()
+
+    log_activity(
+        db, current_admin, "donor_document_reupload_requested", "donor", donor_id,
+        {"document_id": document_id, "type": document.type, "reason": reupload_data.reason},
+        request.client.host if request.client else None
+    )
+
+    return {"message": "Re-upload requested", "document_id": document_id}
 
 
 @router.post("/donors/{donor_id}/documents/verify")
