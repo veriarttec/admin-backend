@@ -677,7 +677,29 @@ async def get_donor_full_details(
             created_at=consent.created_at,
             updated_at=consent.updated_at
         ))
-    
+
+    # Counseling sessions
+    sessions = db.query(CounselingSession).filter(CounselingSession.donor_id == donor_id).all()
+    session_list = [
+        CounselingSessionResponse(
+            id=str(s.id),
+            donor_id=str(s.donor_id),
+            bank_id=str(s.bank_id),
+            donor_name=f"{donor.first_name} {donor.last_name}" if donor.first_name and donor.last_name else None,
+            bank_name=bank_name,
+            status=s.status,
+            method=s.method,
+            requested_at=s.requested_at,
+            scheduled_at=s.scheduled_at,
+            completed_at=s.completed_at,
+            meeting_link=s.meeting_link,
+            location=s.location,
+            notes=s.notes,
+            created_at=s.created_at
+        )
+        for s in sessions
+    ]
+
     # Get test reports
     reports = db.query(TestReport).filter(TestReport.donor_id == donor_id).all()
     test_reports = [
@@ -763,6 +785,8 @@ async def get_donor_full_details(
         created_at=donor.created_at,
         updated_at=donor.updated_at,
         state_history=state_history,
+        consents=consent_documents,
+        counseling_sessions=session_list,
         consent_documents=consent_documents,
         test_reports=test_reports
     )
@@ -1155,134 +1179,6 @@ async def change_bank_state(
 
 
 # ========== Enhanced Donor Management ==========
-@router.get("/donors/{donor_id}/full", response_model=DonorDetailFullResponse)
-async def get_donor_full_details(
-    donor_id: str,
-    db: Session = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
-):
-    """Get comprehensive donor details with all relations"""
-    donor = db.query(Donor).filter(Donor.id == donor_id).first()
-    if not donor:
-        raise HTTPException(status_code=404, detail="Donor not found")
-    
-    bank_name = None
-    if donor.bank_id:
-        bank = db.query(Bank).filter(Bank.id == donor.bank_id).first()
-        bank_name = bank.name if bank else None
-    
-    # State history
-    history = db.query(DonorStateHistory).filter(
-        DonorStateHistory.donor_id == donor_id
-    ).order_by(DonorStateHistory.created_at.desc()).all()
-    
-    state_history = [
-        StateHistoryItem(
-            id=str(h.id),
-            from_state=h.from_state,
-            to_state=h.to_state,
-            changed_by=h.changed_by,
-            changed_by_role=h.changed_by_role,
-            reason=h.reason,
-            created_at=h.created_at
-        )
-        for h in history
-    ]
-    
-    # Consents
-    consents = db.query(DonorConsent).filter(DonorConsent.donor_id == donor_id).all()
-    consent_list = []
-    for consent in consents:
-        template = db.query(ConsentTemplate).filter(ConsentTemplate.id == consent.template_id).first()
-        consent_list.append(DonorConsentResponse(
-            id=str(consent.id),
-            donor_id=str(consent.donor_id),
-            template_id=str(consent.template_id),
-            template_title=template.title if template else None,
-            status=consent.status,
-            signed_at=consent.signed_at,
-            signature_data=consent.signature_data,
-            verified_at=consent.verified_at,
-            verified_by=consent.verified_by,
-            verification_notes=consent.verification_notes,
-            created_at=consent.created_at
-        ))
-    
-    # Counseling sessions
-    sessions = db.query(CounselingSession).filter(CounselingSession.donor_id == donor_id).all()
-    session_list = [
-        CounselingSessionResponse(
-            id=str(s.id),
-            donor_id=str(s.donor_id),
-            bank_id=str(s.bank_id),
-            donor_name=f"{donor.first_name} {donor.last_name}" if donor.first_name and donor.last_name else None,
-            bank_name=bank_name,
-            status=s.status,
-            method=s.method,
-            requested_at=s.requested_at,
-            scheduled_at=s.scheduled_at,
-            completed_at=s.completed_at,
-            meeting_link=s.meeting_link,
-            location=s.location,
-            notes=s.notes,
-            created_at=s.created_at
-        )
-        for s in sessions
-    ]
-    
-    # Test reports - ADMIN SHOULD NOT SEE THESE
-    # reports = db.query(TestReport).filter(TestReport.donor_id == donor_id).all()
-    report_list = [] 
-    # [
-    #     TestReportResponse(
-    #         id=str(r.id),
-    #         donor_id=str(r.donor_id),
-    #         bank_id=str(r.bank_id),
-    #         donor_name=f"{donor.first_name} {donor.last_name}" if donor.first_name and donor.last_name else None,
-    #         bank_name=bank_name,
-    #         source=r.source,
-    #         test_type=r.test_type,
-    #         test_name=r.test_name,
-    #         file_url=r.file_url,
-    #         file_name=r.file_name,
-    #         uploaded_by=r.uploaded_by,
-    #         uploaded_at=r.uploaded_at,
-    #         test_date=r.test_date,
-    #         lab_name=r.lab_name,
-    #         notes=r.notes,
-    #         created_at=r.created_at
-    #     )
-    #     for r in reports
-    # ]
-    
-    return DonorDetailFullResponse(
-        id=str(donor.id),
-        email=donor.email,
-        first_name=donor.first_name,
-        last_name=donor.last_name,
-        phone=donor.phone,
-        state=donor.state,
-        date_of_birth=donor.date_of_birth,
-        address=donor.address,
-        medical_interest_info=donor.medical_interest_info,
-        legal_documents=donor.legal_documents.get("documents", []) if isinstance(donor.legal_documents, dict) else (donor.legal_documents if isinstance(donor.legal_documents, list) else []),
-        bank_id=str(donor.bank_id) if donor.bank_id else None,
-        bank_name=bank_name,
-        selected_at=donor.selected_at,
-        consent_pending=donor.consent_pending or False,
-        counseling_pending=donor.counseling_pending or False,
-        tests_pending=donor.tests_pending or False,
-        eligibility_status=donor.eligibility_status or "pending",
-        eligibility_notes=donor.eligibility_notes,
-        eligibility_decided_at=donor.eligibility_decided_at,
-        created_at=donor.created_at,
-        updated_at=donor.updated_at,
-        state_history=state_history,
-        consents=consent_list,
-        counseling_sessions=session_list,
-        test_reports=report_list
-    )
-
 
 @router.put("/donors/{donor_id}", response_model=DonorDetailFullResponse)
 async def update_donor(
@@ -1324,16 +1220,59 @@ async def get_donor_documents(
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(require_role(["super_admin", "admin", "verification_staff"]))
 ):
-    """Get donor legal documents with status"""
+    """Get donor legal documents with status.
+
+    Returns DonorDocument table rows (id, file_url, file_name, ...) which is
+    what the verify/reject/reupload/delete endpoints operate on. Falls back to
+    the legacy legal_documents JSON column for donors whose docs predate the
+    table, normalising url/name -> file_url/file_name so the frontend shape is
+    consistent.
+    """
     donor = db.query(Donor).filter(Donor.id == donor_id).first()
     if not donor:
         raise HTTPException(status_code=404, detail="Donor not found")
-        
+
+    docs = db.query(DonorDocument).filter(
+        DonorDocument.donor_id == donor_id
+    ).order_by(DonorDocument.uploaded_at.asc()).all()
+
+    if docs:
+        return [
+            {
+                "id": doc.id,
+                "type": doc.type,
+                "status": doc.status or "pending",
+                "file_url": doc.file_url,
+                "file_name": doc.file_name,
+                "rejection_reason": doc.rejection_reason,
+                "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                "verified_at": doc.verified_at.isoformat() if doc.verified_at else None,
+                "verified_by": doc.verified_by,
+            }
+            for doc in docs
+        ]
+
+    # Legacy fallback: legal_documents JSON column (url/name shape)
+    legacy = []
     if isinstance(donor.legal_documents, dict) and "documents" in donor.legal_documents:
-        return donor.legal_documents["documents"]
+        legacy = donor.legal_documents["documents"]
     elif isinstance(donor.legal_documents, list):
-        return donor.legal_documents
-    return []
+        legacy = donor.legal_documents
+
+    return [
+        {
+            "id": entry.get("id"),
+            "type": entry.get("type"),
+            "status": entry.get("status", "pending"),
+            "file_url": entry.get("file_url") or entry.get("url"),
+            "file_name": entry.get("file_name") or entry.get("name"),
+            "rejection_reason": entry.get("rejection_reason"),
+            "uploaded_at": entry.get("uploaded_at"),
+            "verified_at": entry.get("verified_at"),
+            "verified_by": entry.get("verified_by"),
+        }
+        for entry in legacy
+    ]
 
 
 REQUIRED_DONOR_DOCUMENT_TYPES = ("government_id", "proof_of_address")
@@ -1345,7 +1284,7 @@ async def delete_donor_document(
     document_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(require_role(["super_admin", "support"]))
+    current_admin: Admin = Depends(require_role(["super_admin", "admin", "verification_staff", "support"]))
 ):
     """Permanently delete a donor document (DB row + storage object)."""
     from storage_utils import parse_storage_url, delete_file
@@ -1425,7 +1364,7 @@ async def request_document_reupload(
     reupload_data: DocumentReuploadRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(require_role(["super_admin", "support"]))
+    current_admin: Admin = Depends(require_role(["super_admin", "admin", "verification_staff", "support"]))
 ):
     """Mark a donor document as rejected so the donor must upload a replacement."""
     donor = db.query(Donor).filter(Donor.id == donor_id).first()
