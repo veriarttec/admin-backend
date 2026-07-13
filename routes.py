@@ -466,11 +466,11 @@ async def update_bank_subscription(
     bank.subscription_expires_at = subscription_data.subscription_expires_at
     
     if bank.state in ["verified", "subscription_pending"]:
-        bank.state = "subscribed_onboarded"
-    
+        bank.state = "operational"
+
     db.commit()
     db.refresh(bank)
-    
+
     log_activity(
         db, current_admin, "subscription_updated", "bank", bank.id,
         {
@@ -515,16 +515,19 @@ async def list_donors(
     state: Optional[str] = None,
     bank_id: Optional[str] = None,
     search: Optional[str] = None,
+    aadhaar_search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(get_current_admin)
 ):
     """List all donors with filters"""
     query = db.query(Donor)
-    
+
     if state:
         query = query.filter(Donor.state == state)
     if bank_id:
         query = query.filter(Donor.bank_id == bank_id)
+    if aadhaar_search:
+        query = query.filter(Donor.aadhaar_number.ilike(f"%{aadhaar_search}%"))
     if search:
         query = query.filter(
             or_(
@@ -555,6 +558,7 @@ async def list_donors(
             bank_id=str(donor.bank_id) if donor.bank_id else None,
             bank_name=bank_name,
             eligibility_status=donor.eligibility_status or "pending",
+            aadhaar_number=donor.aadhaar_number,
             created_at=donor.created_at
         ))
     
@@ -1702,11 +1706,11 @@ async def create_update_subscription(
         bank.billing_details = subscription_data.billing_details
     
     if bank.state in ["verified", "subscription_pending"]:
-        bank.state = "subscribed_onboarded"
-    
+        bank.state = "operational"
+
     db.commit()
     db.refresh(bank)
-    
+
     log_activity(
         db, current_admin, "subscription_created_updated", "bank", bank.id,
         {

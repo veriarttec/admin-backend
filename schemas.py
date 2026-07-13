@@ -133,6 +133,7 @@ class DonorAdminView(BaseModel):
     bank_id: Optional[str] = None
     bank_name: Optional[str] = None
     eligibility_status: str
+    aadhaar_number: Optional[str] = None
     created_at: datetime
 
 
@@ -353,6 +354,7 @@ class DonorDetailFullResponse(BaseModel):
     address: Optional[str] = None
     medical_interest_info: Optional[Dict[str, Any]] = None
     legal_documents: Optional[List[Dict[str, Any]]] = None
+    aadhaar_number: Optional[str] = None
     bank_id: Optional[str] = None
     bank_name: Optional[str] = None
     selected_at: Optional[datetime] = None

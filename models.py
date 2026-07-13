@@ -34,8 +34,9 @@ class BankState(str, enum.Enum):
     VERIFICATION_PENDING = "verification_pending"
     VERIFIED = "verified"
     SUBSCRIPTION_PENDING = "subscription_pending"
-    SUBSCRIBED_ONBOARDED = "subscribed_onboarded"
     OPERATIONAL = "operational"
+    CONFLICTED = "conflicted"
+    OFFBOARDED = "offboarded"
 
 
 class EligibilityStatus(str, enum.Enum):
@@ -138,6 +139,7 @@ class Donor(Base):
     blood_group = Column(String)
     
     medical_interest_info = Column(JSON)
+    aadhaar_number = Column(String(12), unique=True, index=True)
     profile_picture_url = Column(String)
 
     bank_id = Column(String, ForeignKey("banks.id"))
