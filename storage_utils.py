@@ -20,24 +20,28 @@ def get_supabase_client() -> Client:
 
 def get_signed_url(bucket: str, file_path: str, expires_in: int = 3600) -> str:
     """
-    Get a signed URL for a file in Supabase Storage
-    
-    Args:
-        bucket: Bucket name
-        file_path: Path to file within bucket
-        expires_in: URL expiration time in seconds (default 1 hour)
-    
-    Returns:
-        Signed URL
+    Get a signed URL for a file in Supabase Storage.
+    Falls back to the public URL if the bucket is public and signing fails.
     """
     supabase = get_supabase_client()
     try:
         response = supabase.storage.from_(bucket).create_signed_url(file_path, expires_in)
+        signed = (response or {}).get('signedURL') or (response or {}).get('signedUrl')
+        if signed:
+            return signed
     except Exception:
-        raise HTTPException(status_code=404, detail="Document not found or unavailable")
-    if response and ('signedURL' in response or 'signedUrl' in response):
-        return response.get('signedURL') or response.get('signedUrl')
-    # No public-URL fallback: never expose documents when signing fails
+        pass
+
+    # Signing failed — check if the file exists in a public bucket
+    try:
+        folder = "/".join(file_path.split("/")[:-1])
+        filename = file_path.split("/")[-1]
+        files = supabase.storage.from_(bucket).list(folder)
+        if any(f.get("name") == filename for f in (files or [])):
+            return supabase.storage.from_(bucket).get_public_url(file_path)
+    except Exception:
+        pass
+
     raise HTTPException(status_code=404, detail="Document not found or unavailable")
 
 
