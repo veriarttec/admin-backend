@@ -32,17 +32,8 @@ def get_signed_url(bucket: str, file_path: str, expires_in: int = 3600) -> str:
     except Exception:
         pass
 
-    # Signing failed — check if the file exists in a public bucket
-    try:
-        folder = "/".join(file_path.split("/")[:-1])
-        filename = file_path.split("/")[-1]
-        files = supabase.storage.from_(bucket).list(folder)
-        if any(f.get("name") == filename for f in (files or [])):
-            return supabase.storage.from_(bucket).get_public_url(file_path)
-    except Exception:
-        pass
-
-    raise HTTPException(status_code=404, detail="Document not found or unavailable")
+    # Signing failed — bucket is likely public, return public URL directly
+    return supabase.storage.from_(bucket).get_public_url(file_path)
 
 
 def parse_storage_url(url: str) -> Optional[tuple]:
