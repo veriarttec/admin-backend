@@ -45,7 +45,7 @@ app.add_middleware(
     allow_origins=settings.origins_list,
     # Railway-hosted frontends stay unblocked even before ALLOWED_ORIGINS is
     # configured; scope is limited to Railway-owned hostnames.
-    allow_origin_regex=r"https://.*\.up\.railway\.app",
+    allow_origin_regex=r"https://.*\.(up\.railway\.app|veriart-tec\.in)",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
