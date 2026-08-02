@@ -45,27 +45,32 @@ limiter = Limiter(key_func=get_remote_address)
 # ========== Auth Helpers ==========
 def get_current_admin(request: Request, db: Session = Depends(get_db)) -> Admin:
     """Get the current authenticated admin from JWT token"""
-    from jose import jwt, JWTError
-    
+    from jose import jwt, JWTError, ExpiredSignatureError
+
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid authorization header"
         )
-    
+
     token = auth_header.split(" ")[1]
-    
+
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         admin_id = payload.get("sub")
         user_type = payload.get("type")
-        
+
         if user_type != "admin" or not admin_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "TOKEN_EXPIRED", "message": "Your session has expired. Please sign in again."}
+        )
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
