@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from database import get_db
 from models import Bank, Donor, Admin, ActivityLog, DonorStateHistory, BankStateHistory, DonorDocument
 from models import ConsentTemplate, DonorConsent, CounselingSession, TestReport, SubscriptionPlan
+from models import SystemSettings, ErrorLog
 from schemas import (
     AdminLogin, AdminTokenResponse, AdminCreate, AdminResponse,
     DashboardStats, DashboardResponse, SubscriptionSummary,
@@ -19,7 +20,8 @@ from schemas import (
     ActivityLogResponse, ActivityLogListResponse,
     SubscriptionAnalytics, MonthlySubscriptionTrend,
     BankDetailResponse, BankUpdateRequest, BankStateChangeRequest,
-    BankActiveToggleRequest, DocumentReuploadRequest,
+    BankActiveToggleRequest, MaintenanceToggleRequest,
+    ErrorLogAdminView, ErrorLogDetailView, ErrorLogListResponse, DocumentReuploadRequest,
     DonorDetailFullResponse, DonorUpdateRequest, DonorEligibilityUpdateRequest,
     ConsentTemplateResponse, DonorConsentResponse,
     CounselingSessionResponse, TestReportResponse,
@@ -1088,6 +1090,134 @@ async def set_bank_active(
         "is_active": bank.is_active,
         "deactivation_reason": bank.deactivation_reason,
     }
+
+
+def _get_or_create_system_settings(db: Session) -> SystemSettings:
+    row = db.query(SystemSettings).filter(SystemSettings.id == "singleton").first()
+    if not row:
+        row = SystemSettings(id="singleton")
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+@router.get("/system-settings")
+async def get_system_settings(
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    row = _get_or_create_system_settings(db)
+    return {
+        "maintenance_mode": row.maintenance_mode,
+        "maintenance_message": row.maintenance_message,
+        "enabled_at": row.enabled_at,
+        "updated_by": row.updated_by,
+    }
+
+
+@router.put("/system-settings/maintenance")
+async def set_maintenance_mode(
+    body: MaintenanceToggleRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(require_role(["super_admin"]))
+):
+    """Take the main app (donor/bank/patient) offline for maintenance, or bring it back.
+
+    Enforced by art-connect-backend's own middleware reading this same row from
+    the shared Supabase DB — the admin panel itself is never affected.
+    """
+    row = _get_or_create_system_settings(db)
+
+    row.maintenance_mode = body.enabled
+    row.maintenance_message = body.message
+    row.updated_by = current_admin.email
+    row.enabled_at = datetime.utcnow() if body.enabled else None
+    db.commit()
+
+    log_activity(
+        db, current_admin,
+        "maintenance_enabled" if body.enabled else "maintenance_disabled",
+        "system_settings", "singleton",
+        {"message": body.message},
+        request.client.host if request.client else None
+    )
+
+    return {
+        "message": f"Maintenance mode {'enabled' if body.enabled else 'disabled'}",
+        "maintenance_mode": row.maintenance_mode,
+        "maintenance_message": row.maintenance_message,
+    }
+
+
+@router.get("/error-logs", response_model=ErrorLogListResponse)
+async def list_error_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    source: Optional[str] = None,
+    resolved: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    """Live feed of backend 5xx and frontend crash reports (source + occurrence-deduped)."""
+    query = db.query(ErrorLog)
+    if source:
+        query = query.filter(ErrorLog.source == source)
+    if resolved is not None:
+        query = query.filter(ErrorLog.resolved == resolved)
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    logs = query.order_by(ErrorLog.last_seen_at.desc()).offset(offset).limit(page_size).all()
+
+    return ErrorLogListResponse(
+        items=[ErrorLogAdminView(
+            id=l.id, source=l.source, level=l.level, message=l.message, path=l.path,
+            status_code=l.status_code, occurrence_count=l.occurrence_count,
+            first_seen_at=l.first_seen_at, last_seen_at=l.last_seen_at, resolved=l.resolved,
+        ) for l in logs],
+        total=total, page=page, page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size
+    )
+
+
+@router.get("/error-logs/{error_log_id}", response_model=ErrorLogDetailView)
+async def get_error_log(
+    error_log_id: str,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    """Full detail including traceback — fetched only when a row is expanded,
+    not shipped in every list-page response."""
+    log = db.query(ErrorLog).filter(ErrorLog.id == error_log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Error log not found")
+    return ErrorLogDetailView(
+        id=log.id, source=log.source, level=log.level, message=log.message, path=log.path,
+        status_code=log.status_code, occurrence_count=log.occurrence_count,
+        first_seen_at=log.first_seen_at, last_seen_at=log.last_seen_at, resolved=log.resolved,
+        method=log.method, traceback=log.traceback, user_type=log.user_type, user_id=log.user_id,
+    )
+
+
+@router.put("/error-logs/{error_log_id}/resolve")
+async def resolve_error_log(
+    error_log_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    log = db.query(ErrorLog).filter(ErrorLog.id == error_log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Error log not found")
+    log.resolved = True
+    db.commit()
+    log_activity(
+        db, current_admin, "error_log_resolved", "error_log", log.id,
+        {"source": log.source}, request.client.host if request.client else None
+    )
+    return {"message": "Marked resolved", "resolved": True}
 
 
 @router.put("/banks/{bank_id}/state", response_model=BankDetailResponse)

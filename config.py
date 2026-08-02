@@ -37,7 +37,20 @@ class Settings(BaseSettings):
     BUCKET_CONSENT_FORMS: str = "consent-forms"
     BUCKET_TEST_REPORTS: str = "test-reports"
     BUCKET_COUNSELING_REPORTS: str = "counseling-reports"
-    
+
+    # SMTP email (Brevo relay) — used only for error alert emails here;
+    # donor/password-reset emails are art-connect-backend's concern.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "VeriART"
+
+    # Error alerting
+    ALERT_EMAIL: str = "veriart.tec@gmail.com"
+    ADMIN_PANEL_URL: str = "https://admin.veriart-tec.in"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

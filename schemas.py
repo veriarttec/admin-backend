@@ -335,6 +335,39 @@ class BankActiveToggleRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class MaintenanceToggleRequest(BaseModel):
+    enabled: bool
+    message: Optional[str] = None
+
+
+class ErrorLogAdminView(BaseModel):
+    id: str
+    source: str
+    level: str
+    message: str
+    path: Optional[str] = None
+    status_code: Optional[int] = None
+    occurrence_count: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+    resolved: bool
+
+
+class ErrorLogDetailView(ErrorLogAdminView):
+    method: Optional[str] = None
+    traceback: Optional[str] = None
+    user_type: Optional[str] = None
+    user_id: Optional[str] = None
+
+
+class ErrorLogListResponse(BaseModel):
+    items: List[ErrorLogAdminView]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class DocumentReuploadRequest(BaseModel):
     reason: str
 

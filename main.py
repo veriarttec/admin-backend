@@ -3,6 +3,7 @@ Admin Portal Backend - Standalone FastAPI Application
 Connects to the main ArtPriv database
 """
 import os
+import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,16 +13,20 @@ from slowapi.errors import RateLimitExceeded
 from config import settings
 from database import engine, Base
 from routes import router, limiter
+from public_routes import router as public_router
 from models import Admin, ActivityLog
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create admin tables if they don't exist
     Base.metadata.create_all(bind=engine)
-    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info("Starting %s v%s", settings.APP_NAME, settings.APP_VERSION)
     yield
-    print(f"Shutting down {settings.APP_NAME}")
+    logger.info("Shutting down %s", settings.APP_NAME)
 
 
 app = FastAPI(
@@ -40,6 +45,25 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         content={"detail": "Too many requests. Please try again later."},
     )
 
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    import traceback
+    from utils.error_logging import log_error
+
+    tb_str = traceback.format_exc()
+    logger.error("Unhandled exception on %s %s", request.method, request.url.path, exc_info=exc)
+    try:
+        log_error(
+            source="admin-backend", level="error", message=str(exc),
+            exc_type=type(exc).__name__, path=request.url.path, method=request.method,
+            status_code=500, traceback_str=tb_str,
+        )
+    except Exception:
+        logger.exception("Failed to log unhandled exception")
+
+    return JSONResponse(status_code=500, content={"detail": "An unexpected error occurred. Please try again later."})
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.origins_list,
@@ -53,6 +77,7 @@ app.add_middleware(
 
 # Include admin routes
 app.include_router(router, prefix="/api/admin", tags=["Admin"])
+app.include_router(public_router, prefix="/api/public", tags=["Public"])
 
 
 @app.get("/")

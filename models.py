@@ -2,7 +2,7 @@
 Models for Admin Portal
 Reflects existing ArtPriv tables in Supabase (PostgreSQL with String UUIDs)
 """
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON, Integer
 from sqlalchemy.sql import func
 import uuid
 import enum
@@ -251,7 +251,41 @@ class ActivityLog(Base):
     
     details = Column(JSON)
     ip_address = Column(String)
-    
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SystemSettings(Base):
+    """Singleton row (id always 'singleton') for global app-wide toggles."""
+    __tablename__ = "system_settings"
+
+    id = Column(String, primary_key=True, default=lambda: "singleton")
+    maintenance_mode = Column(Boolean, default=False, nullable=False)
+    maintenance_message = Column(Text)
+    enabled_at = Column(DateTime(timezone=True))
+    updated_by = Column(String)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ErrorLog(Base):
+    __tablename__ = "error_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    source = Column(String, nullable=False)
+    level = Column(String, nullable=False, default="error")
+    message = Column(Text, nullable=False)
+    fingerprint = Column(String, nullable=False, index=True)
+    path = Column(String)
+    method = Column(String)
+    status_code = Column(Integer)
+    traceback = Column(Text)
+    user_type = Column(String)
+    user_id = Column(String)
+    occurrence_count = Column(Integer, nullable=False, default=1)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    email_sent_at = Column(DateTime(timezone=True))
+    resolved = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
