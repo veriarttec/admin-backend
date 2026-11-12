@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "VeriART"
 
     # Error alerting
-    ALERT_EMAIL: str = "veriart.tec@gmail.com"
+    ALERT_EMAIL: str = "info@veriart-tec.in"
     ADMIN_PANEL_URL: str = "https://admin.veriart-tec.in"
 
     class Config:
