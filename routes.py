@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from database import get_db
 from models import Bank, Donor, Admin, ActivityLog, DonorStateHistory, BankStateHistory, DonorDocument
 from models import ConsentTemplate, DonorConsent, CounselingSession, TestReport, SubscriptionPlan
-from models import SystemSettings, ErrorLog
+from models import SystemSettings, ErrorLog, NotificationEvent
 from schemas import (
     AdminLogin, AdminTokenResponse, AdminCreate, AdminResponse,
     DashboardStats, DashboardResponse, SubscriptionSummary,
@@ -42,6 +42,33 @@ from storage_utils import (
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
+
+
+# ========== Workflow notification helpers ==========
+# The main backend's notifier emails banks and donors from state history rows and
+# from notification_events, so every admin action here must leave one of the two.
+
+def set_bank_state(db: Session, bank: Bank, to_state: str, admin: Admin, reason: str) -> None:
+    """Change a bank's state and record it in bank_state_history (uncommitted)."""
+    if bank.state == to_state:
+        return
+    db.add(BankStateHistory(bank_id=bank.id, from_state=bank.state, to_state=to_state,
+                            changed_by=admin.name, reason=reason))
+    bank.state = to_state
+
+
+def go_live_if_ready(db: Session, bank: Bank, admin: Admin) -> None:
+    """A verified bank that has chosen a plan is live; there is no payment step yet."""
+    if bank.is_verified and bank.is_subscribed and bank.state in ("verified", "subscription_pending"):
+        set_bank_state(db, bank, "operational", admin,
+                       f"Live on the {bank.subscription_tier or 'chosen'} plan")
+
+
+def record_event(db: Session, entity_type: str, entity_id: str, event: str, admin: Admin,
+                 reason: Optional[str] = None, data: Optional[dict] = None) -> None:
+    """Queue a notification for an action that is not a state change (uncommitted)."""
+    db.add(NotificationEvent(entity_type=entity_type, entity_id=str(entity_id), event=event,
+                             actor="VeriART", reason=reason, data=data))
 
 
 # ========== Auth Helpers ==========
@@ -413,10 +440,11 @@ async def verify_bank(
     bank.is_verified = True
     bank.verified_at = datetime.utcnow()
     bank.verified_by = verify_data.verified_by
-    
-    if bank.state == "verification_pending":
-        bank.state = "verified"
-    
+
+    if bank.state in ("account_created", "verification_pending"):
+        set_bank_state(db, bank, "verified", current_admin, "Bank verified by VeriART")
+    go_live_if_ready(db, bank, current_admin)
+
     db.commit()
     db.refresh(bank)
     
@@ -471,9 +499,16 @@ async def update_bank_subscription(
     bank.subscription_tier = subscription_data.subscription_tier
     bank.subscription_started_at = subscription_data.subscription_started_at
     bank.subscription_expires_at = subscription_data.subscription_expires_at
-    
+
     if bank.state in ["verified", "subscription_pending"]:
-        bank.state = "operational"
+        set_bank_state(db, bank, "operational", current_admin,
+                       f"Subscription activated: {subscription_data.subscription_tier}")
+    else:
+        record_event(db, "bank", bank.id, "subscription_updated", current_admin, data={
+            "tier": subscription_data.subscription_tier,
+            "expires_at": subscription_data.subscription_expires_at.isoformat()
+                          if subscription_data.subscription_expires_at else None,
+        })
 
     db.commit()
     db.refresh(bank)
@@ -1074,6 +1109,8 @@ async def set_bank_active(
     else:
         bank.deactivated_at = datetime.utcnow()
         bank.deactivation_reason = toggle_data.reason or "Suspended by platform administrator"
+    record_event(db, "bank", bank.id, "bank_reactivated" if toggle_data.is_active else "bank_deactivated",
+                 current_admin, reason=None if toggle_data.is_active else bank.deactivation_reason)
 
     db.commit()
 
@@ -1839,9 +1876,16 @@ async def create_update_subscription(
     
     if subscription_data.billing_details:
         bank.billing_details = subscription_data.billing_details
-    
+
     if bank.state in ["verified", "subscription_pending"]:
-        bank.state = "operational"
+        set_bank_state(db, bank, "operational", current_admin,
+                       f"Subscription activated: {subscription_data.subscription_tier}")
+    else:
+        record_event(db, "bank", bank.id, "subscription_updated", current_admin, data={
+            "tier": subscription_data.subscription_tier,
+            "expires_at": subscription_data.subscription_expires_at.isoformat()
+                          if subscription_data.subscription_expires_at else None,
+        })
 
     db.commit()
     db.refresh(bank)
@@ -1892,7 +1936,8 @@ async def cancel_subscription(
     
     bank.is_subscribed = False
     bank.subscription_expires_at = datetime.utcnow()
-    
+    record_event(db, "bank", bank.id, "subscription_cancelled", current_admin)
+
     db.commit()
     
     log_activity(
@@ -2135,7 +2180,8 @@ async def verify_bank_document(
             reason=f"All certification documents verified by {current_admin.name}"
         )
         db.add(history)
-    
+        go_live_if_ready(db, bank, current_admin)
+
     db.commit()
     
     log_activity(
@@ -2177,7 +2223,9 @@ async def reject_bank_document(
     # Mark bank verification as incomplete
     bank.is_verified = False
     bank.verified_at = None
-    
+    record_event(db, "bank", bank.id, "bank_document_rejected", current_admin, reason=reject_data.reason,
+                 data={"document": docs[document_index].get("filename") or f"Document {document_index + 1}"})
+
     db.commit()
     
     log_activity(

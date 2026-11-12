@@ -392,3 +392,19 @@ class SubscriptionPlan(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class NotificationEvent(Base):
+    """Outbox of actions that are not state changes (bank taken offline, subscription
+    updated, document rejected). The main backend's notifier emails these; it defines
+    the same table."""
+    __tablename__ = "notification_events"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    entity_type = Column(String, nullable=False)  # 'bank' or 'donor'
+    entity_id = Column(String, nullable=False, index=True)
+    event = Column(String, nullable=False)
+    actor = Column(String)  # who did it, as shown in the email
+    reason = Column(Text)
+    data = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
