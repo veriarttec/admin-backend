@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "VeriART"
+    # Brevo API key (not the SMTP key). When set, email goes over HTTPS instead
+    # of SMTP; required on Railway, which blocks outbound SMTP ports.
+    BREVO_API_KEY: str = ""
 
     # Error alerting
     ALERT_EMAIL: str = "info@veriart-tec.in"
